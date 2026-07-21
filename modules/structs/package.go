@@ -49,3 +49,17 @@ type PackageFile struct {
 	// The type specific properties locating the package file, e.g. the distribution and component of a Debian package
 	Properties map[string]string `json:"properties,omitempty"`
 }
+
+// ComposerDevBranchOption describes a Composer dev branch link
+type ComposerDevBranchOption struct {
+	Repo   string `json:"repo" binding:"MaxSize(100)"`
+	Branch string `json:"branch" binding:"Required;GitRefName;MaxSize(100)"`
+}
+
+// ComposerDevBranch represents a Composer dev branch link
+type ComposerDevBranch struct {
+	Package string `json:"package"`
+	Version string `json:"version"`
+	Repo    string `json:"repo"`
+	Branch  string `json:"branch"`
+}
