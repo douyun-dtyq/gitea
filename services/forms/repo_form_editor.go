@@ -21,7 +21,8 @@ type CommitCommonForm struct {
 	NewBranchName string `binding:"GitRefName;MaxSize(100)"`
 	LastCommit    string
 	Signoff       bool
-	CommitEmail   string
+	CommitName    string `binding:"MaxSize(100)"`
+	CommitEmail   string `binding:"MaxSize(254)"`
 }
 
 func (f *CommitCommonForm) Validate(req *http.Request, errs binding.Errors) binding.Errors {

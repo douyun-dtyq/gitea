@@ -33,6 +33,7 @@ const webComponents = new Set([
   // our own, in web_src/js/webcomponents
   'overflow-menu',
   'relative-time',
+  'gitea-git-identity-picker',
   // from dependencies
   'markdown-toolbar',
   'text-expander',
