@@ -720,7 +720,7 @@
   "repo.pulls.view": "Skoða Sameiningarbeiðni",
   "repo.pulls.compare_changes": "Ný Sameiningarbeiðni",
   "repo.pulls.create": "Skapa Sameiningarbeiðni",
-  "repo.pulls.title_desc": "vill sameina %[1]d framlög frá <code>%[2]s</code> í <code id=\"branch_target\">%[3]s</code>",
+  "repo.pulls.title_desc": "vill sameina %[1]d framlög í <code id=\"branch_target\">%[3]s</code> frá <code>%[2]s</code>",
   "repo.pulls.tab_conversation": "Umræða",
   "repo.pulls.tab_commits": "Framlög",
   "repo.pulls.tab_files": "Skráum Breytt",
