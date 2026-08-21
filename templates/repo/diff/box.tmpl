@@ -8,14 +8,6 @@
 					{{svg "octicon-sidebar-collapse" 20 "icon tw-hidden"}}
 					{{svg "octicon-sidebar-expand" 20 "icon tw-hidden"}}
 				</button>
-				<script nonce="{{ctx.CspScriptNonce}}">
-					// Default to true if unset
-					const diffTreeVisible = window.localUserSettings.getBoolean('diff_file_tree_visible', true);
-					const diffTreeBtn = document.querySelector('.diff-toggle-file-tree-button');
-					const diffTreeIcon = `.octicon-sidebar-${diffTreeVisible ? 'expand' : 'collapse'}`;
-					diffTreeBtn.querySelector(diffTreeIcon).classList.remove('tw-hidden');
-					diffTreeBtn.setAttribute('data-tooltip-content', diffTreeBtn.getAttribute(diffTreeVisible ? 'data-hide-text' : 'data-show-text'));
-				</script>
 			{{end}}
 			{{if not .DiffNotAvailable}}
 				<div class="diff-detail-stats tw-flex tw-items-center tw-flex-wrap">
@@ -61,10 +53,7 @@
 	<div id="diff-container">
 		{{if $showFileTree}}
 			{{$.FileIconPoolHTML}}
-			<div id="diff-file-tree" class="tw-hidden not-mobile"></div>
-			<script nonce="{{ctx.CspScriptNonce}}">
-				if (diffTreeVisible) document.getElementById('diff-file-tree').classList.remove('tw-hidden');
-			</script>
+			<div id="diff-file-tree" class="tw-hidden not-mobile" data-tree="{{JsonUtils.EncodeToString .PageData.DiffFileTree}}" data-folder-icon="{{JsonUtils.EncodeToString .PageData.FolderIcon}}" data-folder-open-icon="{{JsonUtils.EncodeToString .PageData.FolderOpenIcon}}"></div>
 		{{end}}
 		{{if .DiffNotAvailable}}
 			<h4>{{ctx.Locale.Tr "repo.diff.data_not_available"}}</h4>

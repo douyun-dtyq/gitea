@@ -2589,6 +2589,7 @@
   "repo.diff.too_many_files": "某些文件未显示，因为此 diff 中更改的文件太多",
   "repo.diff.show_more": "显示更多",
   "repo.diff.load": "加载差异",
+  "repo.diff.async_load_error": "比较结果加载失败。",
   "repo.diff.generated": "自动生成",
   "repo.diff.vendored": "第三方依赖",
   "repo.diff.comment.add_line_comment": "添加行内评论",

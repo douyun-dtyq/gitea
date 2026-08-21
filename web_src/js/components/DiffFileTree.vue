@@ -13,6 +13,7 @@ const store = diffTreeStore();
 onMounted(() => {
   // Default to true if unset
   store.fileTreeIsVisible = localUserSettings.getBoolean(LOCAL_STORAGE_KEY, true);
+  updateState(store.fileTreeIsVisible);
   document.querySelector('.diff-toggle-file-tree-button')!.addEventListener('click', toggleVisibility);
 
   hashChangeListener();

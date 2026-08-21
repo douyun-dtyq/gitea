@@ -46,10 +46,24 @@ import (
 )
 
 const (
-	tplCompare     templates.TplName = "repo/diff/compare"
-	tplBlobExcerpt templates.TplName = "repo/diff/blob_excerpt"
-	tplDiffBox     templates.TplName = "repo/diff/box"
+	tplCompare       templates.TplName = "repo/diff/compare"
+	tplCompareResult templates.TplName = "repo/diff/compare_result"
+	tplBlobExcerpt   templates.TplName = "repo/diff/blob_excerpt"
+	tplDiffBox       templates.TplName = "repo/diff/box"
 )
+
+const (
+	compareResultParam = "compare-result"
+	compareFullParam   = "compare-full"
+)
+
+func compareFallbackURL(ctx *context.Context) string {
+	query := ctx.Req.URL.Query()
+	query.Del("file-only")
+	query.Del(compareResultParam)
+	query.Set(compareFullParam, "true")
+	return ctx.Link + "?" + query.Encode()
+}
 
 // setCompareContext sets context data.
 func setCompareContext(ctx *context.Context, before, head *git.Commit, headOwner, headName string) {
@@ -202,6 +216,10 @@ func newComparePageInfo() *comparePageInfoType {
 
 // parseCompareInfo parse compare info between two commit for preparing comparing references
 func (cpi *comparePageInfoType) parseCompareInfo(ctx *context.Context, compareParam string) error {
+	return cpi.parseCompareInfoWithCommits(ctx, compareParam, !ctx.FormBool("file-only"))
+}
+
+func (cpi *comparePageInfoType) parseCompareInfoWithCommits(ctx *context.Context, compareParam string, loadCommits bool) error {
 	baseRepo := ctx.Repo.Repository
 	fileOnly := ctx.FormBool("file-only")
 
@@ -337,7 +355,7 @@ func (cpi *comparePageInfoType) parseCompareInfo(ctx *context.Context, comparePa
 		}
 	}
 
-	compareInfo, err := git_service.GetCompareInfo(ctx, baseRepo, headRepo, headGitRepo, baseRef, headRef, compareReq.DirectComparison(), fileOnly)
+	compareInfo, err := git_service.GetCompareInfoWithCommits(ctx, baseRepo, headRepo, headGitRepo, baseRef, headRef, compareReq.DirectComparison(), loadCommits)
 	if err != nil {
 		return err
 	}
@@ -409,6 +427,25 @@ func prepareNewPullRequestTitleContent(ci *git_service.CompareInfo, commits []*g
 	return title, content
 }
 
+func (cpi *comparePageInfoType) prepareCompareState(ctx *context.Context) {
+	ci := cpi.compareInfo
+	if ci.CompareBase == "" {
+		cpi.nothingToCompare = true
+		return
+	}
+	if ci.HeadCommitID == ci.CompareBase {
+		cpi.setEmptyPullRequestState(ctx)
+	}
+}
+
+// setEmptyPullRequestState marks the comparison as nothing-to-compare and computes whether an empty PR is allowed.
+func (cpi *comparePageInfoType) setEmptyPullRequestState(ctx *context.Context) {
+	config := ctx.Repo.Repository.MustGetUnit(ctx, unit.TypePullRequests).PullRequestsConfig()
+	cpi.nothingToCompare = true
+	// if auto-detect manual merge, an empty PR will be closed immediately because it is already on base branch
+	ctx.Data["AllowEmptyPr"] = !config.AutodetectManualMerge && !cpi.compareInfo.IsSameRef()
+}
+
 // prepareCompareDiff renders compare diff page. TODO: need to refactor it and other "compare diff" related functions together
 func (cpi *comparePageInfoType) prepareCompareDiff(ctx *context.Context, whitespaceBehavior gitcmd.TrustedCmdArgs) {
 	ci := cpi.compareInfo
@@ -423,21 +460,8 @@ func (cpi *comparePageInfoType) prepareCompareDiff(ctx *context.Context, whitesp
 	ctx.Data["BeforeCommitID"] = ci.CompareBase
 	ctx.Data["AfterCommitID"] = headCommitID
 
-	// follow GitHub's behavior: autofill the form and expand
-	newPrFormTitle := ctx.FormTrim("title")
-	newPrFormBody := ctx.FormTrim("body")
-	ctx.Data["ExpandNewPrForm"] = ctx.FormBool("expand") || ctx.FormBool("quick_pull") || newPrFormTitle != "" || newPrFormBody != ""
-	ctx.Data["TitleQuery"] = newPrFormTitle
-	ctx.Data["BodyQuery"] = newPrFormBody
-
 	if headCommitID == ci.CompareBase {
-		config := repo.MustGetUnit(ctx, unit.TypePullRequests).PullRequestsConfig()
-		// if auto-detect manual merge, an empty PR will be closed immediately because it is already on base branch
-		supportEmptyPr := !config.AutodetectManualMerge
-		acrossRepoPr := !ci.IsSameRef()
-		ctx.Data["AllowEmptyPr"] = supportEmptyPr && acrossRepoPr
-
-		cpi.nothingToCompare = true
+		cpi.setEmptyPullRequestState(ctx)
 		return
 	}
 
@@ -540,7 +564,16 @@ func getBranchesAndTagsForRepo(ctx gocontext.Context, repo *repo_model.Repositor
 // CompareDiff show different from one commit to another commit
 func CompareDiff(ctx *context.Context) {
 	comparePageInfo := newComparePageInfo()
-	err := comparePageInfo.parseCompareInfo(ctx, ctx.PathParam("*"))
+	query := ctx.Req.URL.Query()
+	fileOnly := ctx.FormBool("file-only")
+	resultFragment := query.Has(compareResultParam)
+	fullPage := query.Has(compareFullParam)
+	if fileOnly && (resultFragment || fullPage) || resultFragment && fullPage {
+		ctx.HTTPError(http.StatusBadRequest, "compare query parameters are mutually exclusive")
+		return
+	}
+	loadCommits := !fileOnly && (resultFragment || fullPage)
+	err := comparePageInfo.parseCompareInfoWithCommits(ctx, ctx.PathParam("*"), loadCommits)
 	if errors.Is(err, util.ErrNotExist) || errors.Is(err, util.ErrInvalidArgument) {
 		ctx.NotFound(nil)
 		return
@@ -553,11 +586,12 @@ func CompareDiff(ctx *context.Context) {
 	ctx.Data["PullRequestWorkInProgressPrefixes"] = setting.Repository.PullRequest.WorkInProgressPrefixes
 	ctx.Data["CompareInfo"] = ci
 
-	// TODO: need to refactor "prepare compare" related functions together
-	comparePageInfo.prepareCompareDiff(ctx, gitdiff.GetWhitespaceFlag(GetWhitespaceBehavior(ctx)))
-	if ctx.Written() {
-		return
-	}
+	// follow GitHub's behavior: autofill the form and expand
+	newPrFormTitle := ctx.FormTrim("title")
+	newPrFormBody := ctx.FormTrim("body")
+	ctx.Data["ExpandNewPrForm"] = ctx.FormBool("expand") || ctx.FormBool("quick_pull") || newPrFormTitle != "" || newPrFormBody != ""
+	ctx.Data["TitleQuery"] = newPrFormTitle
+	ctx.Data["BodyQuery"] = newPrFormBody
 
 	baseTags, err := repo_model.GetTagNamesByRepoID(ctx, ctx.Repo.Repository.ID)
 	if err != nil {
@@ -566,10 +600,34 @@ func CompareDiff(ctx *context.Context) {
 	}
 	ctx.Data["Tags"] = baseTags
 
-	fileOnly := ctx.FormBool("file-only")
 	if fileOnly {
+		comparePageInfo.prepareCompareDiff(ctx, gitdiff.GetWhitespaceFlag(GetWhitespaceBehavior(ctx)))
+		if ctx.Written() {
+			return
+		}
 		ctx.HTML(http.StatusOK, tplDiffBox)
 		return
+	}
+
+	if !resultFragment && !fullPage {
+		comparePageInfo.prepareCompareState(ctx)
+		if ctx.Written() {
+			return
+		}
+		if ci.CompareBase == "" {
+			ctx.Flash.Error(ctx.Tr("repo.pulls.no_common_history"), true)
+		} else {
+			comparePageInfo.prepareComparePRState(ctx)
+			if ctx.Written() {
+				return
+			}
+		}
+		ctx.Data["CompareFallbackURL"] = compareFallbackURL(ctx)
+	} else {
+		comparePageInfo.prepareCompareDiff(ctx, gitdiff.GetWhitespaceFlag(GetWhitespaceBehavior(ctx)))
+		if ctx.Written() {
+			return
+		}
 	}
 
 	headBranches, headTags, err := getBranchesAndTagsForRepo(ctx, ci.HeadRepo)
@@ -580,21 +638,42 @@ func CompareDiff(ctx *context.Context) {
 	ctx.Data["HeadBranches"] = headBranches
 	ctx.Data["HeadTags"] = headTags
 
-	// For compare repo branches
 	PrepareBranchList(ctx)
 	if ctx.Written() {
 		return
 	}
 
-	if ci.CompareBase != "" {
-		comparePageInfo.prepareCreatePullRequestPage(ctx)
-		if ctx.Written() {
-			return
+	if resultFragment {
+		if ci.CompareBase != "" {
+			comparePageInfo.prepareCreatePullRequestPage(ctx)
+			if ctx.Written() {
+				return
+			}
+		} else {
+			comparePageInfo.nothingToCompare = true
 		}
-	} else {
-		ctx.Flash.Error(ctx.Tr("repo.pulls.no_common_history"), true)
-		ctx.Data["CommitCount"] = 0
+		ctx.Data["PageIsComparePull"] = comparePageInfo.allowCreatePull
+		ctx.Data["IsNothingToCompare"] = comparePageInfo.nothingToCompare
+		ctx.HTML(http.StatusOK, tplCompareResult)
+		return
 	}
+
+	if fullPage {
+		ctx.Data["CompareFull"] = true
+		if ci.CompareBase != "" {
+			comparePageInfo.prepareCreatePullRequestPage(ctx)
+			if ctx.Written() {
+				return
+			}
+		} else {
+			ctx.Flash.Error(ctx.Tr("repo.pulls.no_common_history"), true)
+		}
+		ctx.Data["PageIsComparePull"] = comparePageInfo.allowCreatePull
+		ctx.Data["IsNothingToCompare"] = comparePageInfo.nothingToCompare
+		ctx.HTML(http.StatusOK, tplCompare)
+		return
+	}
+
 	ctx.Data["PageIsComparePull"] = comparePageInfo.allowCreatePull
 	ctx.Data["IsNothingToCompare"] = comparePageInfo.nothingToCompare
 	ctx.HTML(http.StatusOK, tplCompare)
@@ -639,25 +718,37 @@ func downloadCompareDiffOrPatch(ctx *context.Context, patch bool) {
 	}
 }
 
+// prepareComparePRState checks whether an unmerged PR already exists for this comparison and exposes it for the compare page status block.
+func (cpi *comparePageInfoType) prepareComparePRState(ctx *context.Context) bool {
+	if !cpi.allowCreatePull {
+		return false
+	}
+	ci := cpi.compareInfo
+	pr, err := issues_model.GetUnmergedPullRequest(ctx, ci.HeadRepo.ID, ctx.Repo.Repository.ID, ci.HeadRef.ShortName(), ci.BaseRef.ShortName(), issues_model.PullRequestFlowGithub)
+	if err != nil {
+		if !issues_model.IsErrPullRequestNotExist(err) {
+			ctx.ServerError("GetUnmergedPullRequest", err)
+		}
+		return false
+	}
+	ctx.Data["HasPullRequest"] = true
+	if err := pr.LoadIssue(ctx); err != nil {
+		ctx.ServerError("LoadIssue", err)
+		return false
+	}
+	ctx.Data["PullRequest"] = pr
+	return true
+}
+
 func (cpi *comparePageInfoType) prepareCreatePullRequestPage(ctx *context.Context) {
 	ci := cpi.compareInfo
 	if cpi.allowCreatePull {
-		pr, err := issues_model.GetUnmergedPullRequest(ctx, ci.HeadRepo.ID, ctx.Repo.Repository.ID, ci.HeadRef.ShortName(), ci.BaseRef.ShortName(), issues_model.PullRequestFlowGithub)
-		if err != nil {
-			if !issues_model.IsErrPullRequestNotExist(err) {
-				ctx.ServerError("GetUnmergedPullRequest", err)
-				return
-			}
-		} else {
-			ctx.Data["HasPullRequest"] = true
-			if err := pr.LoadIssue(ctx); err != nil {
-				ctx.ServerError("LoadIssue", err)
-				return
-			}
-			ctx.Data["PullRequest"] = pr
+		if cpi.prepareComparePRState(ctx) {
 			return
 		}
-
+		if ctx.Written() {
+			return
+		}
 		if !cpi.nothingToCompare {
 			// Setup information for new form.
 			pageMetaData := retrieveRepoIssueMetaData(ctx, ctx.Repo.Repository, nil, true)
