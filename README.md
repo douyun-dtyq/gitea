@@ -11,6 +11,27 @@
 
 [繁體中文](./README.zh-tw.md) | [简体中文](./README.zh-cn.md)
 
+## The fork
+
+本分支（live/live-main）是自用实例的分支。增加了一些独特功能
+
+我的用户十分希望加一些功能，而我实在没有时间精力推动上游提供这些功能或完整维护这些功能的PR并且做到能合回上游的的程度，因此本分支使用AI编程实现了这些功能，并不会再向上游PR。
+
+基于分享精神，本仓库的所有独特修改均视为放弃署名权的授权，你可以在不违反上游许可证的情况下重新署名并任意使用（如果你不介意它们是AI写的垃圾代码的话）
+
+功能：
+
+- composer包支持`dev-`分支，需要手动通过API创建
+- 提交和merge页面中允许用户选择已认证的邮箱作为提交或merge的身份
+
+修复：
+
+- 允许包Readme中出现不可解码的unicode字符，不会500（上游会500）
+
+变更：
+
+-  PR界面的描述文案从原先的"from ... into ..."语序改为了匹配比较界面和GitHub风格的"into ... from ..."
+
 ## Purpose
 
 The goal of Gitea is to make the easiest, fastest, and most painless way of
