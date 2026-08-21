@@ -1,0 +1,20 @@
+<div id="compare-result">
+	{{$showDiffBox := and .CommitCount (not .IsNothingToCompare)}}
+	{{if and .IsSigned .PageIsComparePull}}
+		{{$allowCreatePR := and ($.CompareInfo.BaseRef.IsBranch) ($.CompareInfo.HeadRef.IsBranch) (not $.CompareInfo.DirectComparison) (or $.AllowEmptyPr (not .IsNothingToCompare))}}
+		{{if $allowCreatePR}}
+			<div class="pullrequest-form {{if not .ExpandNewPrForm}}tw-hidden{{end}}">
+				{{template "repo/issue/new_form" .}}
+			</div>
+		{{end}}
+	{{else}}
+		{{if and (not .CommitCount) $.CompareInfo.CompareBase}}
+			<div class="ui segment">{{ctx.Locale.Tr "repo.commits.nothing_to_compare"}}</div>
+		{{end}}
+	{{end}}
+
+	{{if $showDiffBox}}
+		{{template "repo/commits_table" .}}
+		{{template "repo/diff/box" .}}
+	{{end}}
+</div>

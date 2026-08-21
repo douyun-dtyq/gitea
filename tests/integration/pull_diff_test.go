@@ -100,7 +100,7 @@ func TestLongLineDiffRendering(t *testing.T) {
 		"split":   {oldPrefix, newPrefix, contextPrefix, contextPrefix, short, short},
 	} {
 		t.Run(style, func(t *testing.T) {
-			req := NewRequest(t, "GET", "/user2/repo1/compare/long-line-before..long-line-after?style="+style)
+			req := NewRequest(t, "GET", "/user2/repo1/compare/long-line-before..long-line-after?style="+style+"&compare-full=true")
 			resp := MakeRequest(t, req, http.StatusOK)
 			doc := NewHTMLParser(t, resp.Body)
 			for _, filename := range []string{"long.txt", "long.csv"} {

@@ -52,6 +52,11 @@ func (ci *CompareInfo) DirectComparison() bool {
 // It does its best to fill the fields as many as it can.
 // MergeBase can be empty if the base and head are unrelated.
 func GetCompareInfo(ctx context.Context, baseRepo, headRepo *repo_model.Repository, headGitRepo *git.Repository, baseRef, headRef git.RefName, directComparison, fileOnly bool) (compareInfo CompareInfo, err error) {
+	return GetCompareInfoWithCommits(ctx, baseRepo, headRepo, headGitRepo, baseRef, headRef, directComparison, !fileOnly)
+}
+
+// GetCompareInfoWithCommits returns compare information and optionally loads the commit list.
+func GetCompareInfoWithCommits(ctx context.Context, baseRepo, headRepo *repo_model.Repository, headGitRepo *git.Repository, baseRef, headRef git.RefName, directComparison, loadCommits bool) (compareInfo CompareInfo, err error) {
 	baseCommitID, err1 := git.GetFullCommitID(ctx, baseRepo, baseRef.String())
 	headCommitID, err2 := git.GetFullCommitID(ctx, headRepo, headRef.String())
 	compareInfo = CompareInfo{
@@ -93,7 +98,7 @@ func GetCompareInfo(ctx context.Context, baseRepo, headRepo *repo_model.Reposito
 	}
 
 	// We have a common base - therefore we know that ... should work
-	if !fileOnly {
+	if loadCommits {
 		// In git log/rev-list, the "..." syntax represents the symmetric difference between two references,
 		// which is different from the meaning of "..." in git diff (where it implies diffing from the merge base).
 		// For listing PR commits, we must use merge-base..head to include only the commits introduced by the head branch.

@@ -168,7 +168,6 @@
 			</div>
 		</div>
 
-		{{$showDiffBox := and .CommitCount (not .IsNothingToCompare)}}
 		{{if and .IsSigned .PageIsComparePull}}
 			{{$allowCreatePR := and ($.CompareInfo.BaseRef.IsBranch) ($.CompareInfo.HeadRef.IsBranch) (not $.CompareInfo.DirectComparison) (or $.AllowEmptyPr (not .IsNothingToCompare))}}
 			{{if .IsNothingToCompare}}
@@ -204,24 +203,27 @@
 			{{else if $allowCreatePR}}
 				<div class="ui info message flex-text-block pullrequest-form-toggle {{if .ExpandNewPrForm}}tw-hidden{{end}}">
 					<span class="tw-flex-1">{{ctx.Locale.Tr "repo.pulls.new.description"}}</span>
-					<a class="ui button primary show-panel toggle" data-panel=".pullrequest-form-toggle, .pullrequest-form">{{ctx.Locale.Tr "repo.pulls.new"}}</a>
-				</div>
-				<div class="pullrequest-form {{if not .ExpandNewPrForm}}tw-hidden{{end}}">
-					{{template "repo/issue/new_form" .}}
+					<button type="button" class="ui button primary show-panel toggle" data-panel=".pullrequest-form-toggle, .pullrequest-form"{{if not .CompareFull}} disabled data-compare-pr-button{{end}}>{{ctx.Locale.Tr "repo.pulls.new"}}</button>
 				</div>
 			{{end}}
 		{{else}}{{/* not signed-in or not for pull-request */}}
-			{{if and (not .CommitCount) $.CompareInfo.CompareBase}}
+			{{if and .IsNothingToCompare $.CompareInfo.CompareBase}}
 				<div class="ui segment">{{ctx.Locale.Tr "repo.commits.nothing_to_compare"}}</div>
 			{{end}}
 		{{end}}
-	</div>
 
-	{{if $showDiffBox}}
-		<div class="ui container fluid padded tw-my-4">
-			{{template "repo/commits_table" .}}
-			{{template "repo/diff/box" .}}
-		</div>
-	{{end}}
+		{{if .CompareFull}}
+			{{template "repo/diff/compare_result" .}}
+		{{else}}
+			<div id="compare-result" data-global-init="initCompareResult" data-compare-state="{{if .IsNothingToCompare}}empty{{else}}ready{{end}}" data-error-message="{{ctx.Locale.Tr "repo.diff.async_load_error"}}">
+				{{if not .IsNothingToCompare}}
+					<div class="ui segment tw-text-center" data-compare-placeholder aria-label="{{ctx.Locale.Tr "loading"}}" aria-live="polite" aria-busy="true">
+						{{svg "octicon-sync" 20}}
+					</div>
+					<noscript><meta http-equiv="refresh" content="0; url={{.CompareFallbackURL}}"></noscript>
+				{{end}}
+			</div>
+		{{end}}
+	</div>
 </div>
 {{template "base/footer" .}}

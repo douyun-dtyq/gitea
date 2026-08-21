@@ -25,6 +25,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// getPullFormAction returns the compare page's pull form action.
+// The form is rendered asynchronously, so the no-JavaScript fallback is used to read it.
+func getPullFormAction(t *testing.T, session *TestSession, compareLink string) string {
+	resp := session.MakeRequest(t, NewRequest(t, "GET", compareLink), http.StatusOK)
+	htmlDoc := NewHTMLParser(t, resp.Body)
+	assert.Equal(t, 1, htmlDoc.doc.Find(`#compare-result[data-global-init="initCompareResult"]`).Length(), "The compare result should be loaded asynchronously")
+	assert.Equal(t, 0, htmlDoc.doc.Find("form#new-issue").Length(), "The pull form should not be rendered in the first response")
+
+	fullPageLink := compareLink + "?compare-full=true"
+	if strings.Contains(compareLink, "?") {
+		fullPageLink = compareLink + "&compare-full=true"
+	}
+	resp = session.MakeRequest(t, NewRequest(t, "GET", fullPageLink), http.StatusOK)
+	htmlDoc = NewHTMLParser(t, resp.Body)
+	action, exists := htmlDoc.doc.Find("form#new-issue").Attr("action")
+	assert.True(t, exists, "The template has changed")
+	return action
+}
+
 func testPullCreate(t *testing.T, session *TestSession, user, repo string, toSelf bool, targetBranch, sourceBranch, title string) *httptest.ResponseRecorder {
 	req := NewRequest(t, "GET", "/"+path.Join(user, repo))
 	resp := session.MakeRequest(t, req, http.StatusOK)
@@ -51,6 +70,21 @@ func testPullCreate(t *testing.T, session *TestSession, user, repo string, toSel
 	}
 
 	req = NewRequest(t, "GET", link)
+	resp = session.MakeRequest(t, req, http.StatusOK)
+
+	// The compare result, including the form for creating the pull, is loaded asynchronously
+	htmlDoc = NewHTMLParser(t, resp.Body)
+	assert.Equal(t, 1, htmlDoc.doc.Find(`#compare-result[data-global-init="initCompareResult"]`).Length(), "The compare result should be loaded asynchronously")
+	assert.Equal(t, 0, htmlDoc.doc.Find("form#new-issue").Length(), "The pull form should not be rendered in the first response")
+
+	// The no-JavaScript fallback renders the compare result and the pull form on the server
+	fullPageLink := link
+	if strings.Contains(fullPageLink, "?") {
+		fullPageLink += "&compare-full=true"
+	} else {
+		fullPageLink += "?compare-full=true"
+	}
+	req = NewRequest(t, "GET", fullPageLink)
 	resp = session.MakeRequest(t, req, http.StatusOK)
 
 	// Submit the form for creating the pull
@@ -93,21 +127,15 @@ func testPullCreateDirectly(t *testing.T, session *TestSession, opts createPullR
 			headCompare = fmt.Sprintf("%s:%s", opts.HeadRepoOwner, opts.HeadBranch)
 		}
 	}
-	req := NewRequest(t, "GET", fmt.Sprintf("/%s/%s/compare/%s...%s", opts.BaseRepoOwner, opts.BaseRepoName, opts.BaseBranch, headCompare))
-	resp := session.MakeRequest(t, req, http.StatusOK)
-
-	// Submit the form for creating the pull
-	htmlDoc := NewHTMLParser(t, resp.Body)
-	link, exists := htmlDoc.doc.Find("form#new-issue").Attr("action")
-	assert.True(t, exists, "The template has changed")
+	link := getPullFormAction(t, session, fmt.Sprintf("/%s/%s/compare/%s...%s", opts.BaseRepoOwner, opts.BaseRepoName, opts.BaseBranch, headCompare))
 	params := map[string]string{
 		"title": opts.Title,
 	}
 	if opts.ReviewerIDs != "" {
 		params["reviewer_ids"] = opts.ReviewerIDs
 	}
-	req = NewRequestWithValues(t, "POST", link, params)
-	resp = session.MakeRequest(t, req, http.StatusOK)
+	req := NewRequestWithValues(t, "POST", link, params)
+	resp := session.MakeRequest(t, req, http.StatusOK)
 	return resp
 }
 
@@ -120,17 +148,11 @@ func testPullCreateFailure(t *testing.T, session *TestSession, baseRepoOwner, ba
 			headCompare = fmt.Sprintf("%s:%s", headRepoOwner, headBranch)
 		}
 	}
-	req := NewRequest(t, "GET", fmt.Sprintf("/%s/%s/compare/%s...%s", baseRepoOwner, baseRepoName, baseBranch, headCompare))
-	resp := session.MakeRequest(t, req, http.StatusOK)
-
-	// Submit the form for creating the pull
-	htmlDoc := NewHTMLParser(t, resp.Body)
-	link, exists := htmlDoc.doc.Find("form#new-issue").Attr("action")
-	assert.True(t, exists, "The template has changed")
-	req = NewRequestWithValues(t, "POST", link, map[string]string{
+	link := getPullFormAction(t, session, fmt.Sprintf("/%s/%s/compare/%s...%s", baseRepoOwner, baseRepoName, baseBranch, headCompare))
+	req := NewRequestWithValues(t, "POST", link, map[string]string{
 		"title": title,
 	})
-	resp = session.MakeRequest(t, req, http.StatusBadRequest)
+	resp := session.MakeRequest(t, req, http.StatusBadRequest)
 	return resp
 }
 
