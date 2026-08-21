@@ -33,6 +33,7 @@
 
 - PR界面的描述文案从原先的"from ... into ..."语序改为了匹配比较界面和GitHub风格的"into ... from ..."
 - 比较页面的比较具体内容会异步加载
+- 优化了Dockerfile
 
 ## Purpose
 
