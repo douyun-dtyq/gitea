@@ -27,6 +27,7 @@ onMounted(() => {
   store.fileTreeIsVisible = localUserSettings.getBoolean(LOCAL_STORAGE_KEY, true);
   // while the tree is hidden there is no control to clear a filter restored from the URL
   if (store.fileTreeIsVisible) applyFiltersToFileBoxes(store); else store.activeExtensions = 'all';
+  updateState(store.fileTreeIsVisible);
   document.querySelector('.diff-toggle-file-tree-button')!.addEventListener('click', toggleVisibility);
   hashChangeListener();
   window.addEventListener('hashchange', hashChangeListener);

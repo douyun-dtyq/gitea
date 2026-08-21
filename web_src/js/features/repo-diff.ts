@@ -11,9 +11,49 @@ import {createTippy} from '../modules/tippy.ts';
 import {invertFileFolding} from './file-fold.ts';
 import {parseDom} from '../utils.ts';
 import {registerGlobalEventFunc, registerGlobalInitFunc} from '../modules/observer.ts';
+import {html} from '../utils/html.ts';
 import {performFetchActionTrigger} from '../modules/fetch-action.ts';
 import {applyFiltersToFileBoxes, diffTreeStore} from '../modules/diff-file.ts';
 import {initImageDiff} from './imagediff.ts';
+
+let compareResultLoadPromise: Promise<void> | null = null;
+
+export function buildCompareResultURL(currentURL: string): string {
+  const url = new URL(currentURL, window.location.origin);
+  url.searchParams.delete('file-only');
+  url.searchParams.delete('compare-full');
+  url.searchParams.set('compare-result', 'true');
+  return url.href;
+}
+
+async function loadCompareResult(el: HTMLElement) {
+  if (el.getAttribute('data-compare-state') !== 'ready') return;
+  if (!compareResultLoadPromise) {
+    compareResultLoadPromise = (async () => {
+      try {
+        const response = await GET(buildCompareResultURL(window.location.href));
+        if (!response.ok) throw new Error(`compare result request failed: ${response.status}`);
+        const responseDocument = parseDom(await response.text(), 'text/html');
+        const result = responseDocument.querySelector<HTMLElement>('#compare-result');
+        if (!result) throw new Error('compare result container missing');
+        el.replaceWith(result);
+        document.querySelector<HTMLButtonElement>('button[data-compare-pr-button]')?.removeAttribute('disabled');
+        initDiffFileTree();
+        initDiffCommitSelect();
+        initExpandAndCollapseFilesButton();
+        onLocationHashChange();
+      } catch (error) {
+        console.error('Failed to load compare result:', error);
+        el.innerHTML = html`<div class="ui negative message">${el.getAttribute('data-error-message')!}</div>`;
+      }
+    })();
+  }
+  await compareResultLoadPromise;
+}
+
+function initCompareResult(el: HTMLElement) {
+  loadCompareResult(el);
+}
 
 function initDiffFileViewToggle(el: HTMLElement) {
   // switch between "rendered" and "source", for image and CSV files
@@ -247,6 +287,7 @@ async function onLocationHashChange() {
 
 export function initRepoDiffView() {
   initRepoDiffConversationForm(); // such form appears on the "conversation" page and "diff" page
+  registerGlobalInitFunc('initCompareResult', initCompareResult);
   registerGlobalEventFunc('click', 'diffLoadMoreFiles', (el) => { diffLoadMoreFiles(el) });
   registerGlobalEventFunc('click', 'diffLoadFileBody', diffLoadFileBody);
   registerGlobalEventFunc('click', 'diffFileViewFold', (el) => invertFileFolding(el.closest('.file-content')!, el));
@@ -255,12 +296,12 @@ export function initRepoDiffView() {
   registerGlobalInitFunc('initDiffFileImageDiff', initImageDiff);
   registerGlobalInitFunc('initDiffFileViewToggle', initDiffFileViewToggle);
 
+  window.addEventListener('hashchange', onLocationHashChange);
   if (!document.querySelector('#diff-file-boxes')) return;
   initRepoDiffConversationNav(); // "previous" and "next" buttons only appear on "diff" page
   initDiffFileTree();
   initDiffCommitSelect();
   initExpandAndCollapseFilesButton();
 
-  window.addEventListener('hashchange', onLocationHashChange);
   onLocationHashChange();
 }

@@ -61,6 +61,34 @@ func TestCompareDefault(t *testing.T) {
 	assert.Lenf(t, selection.Nodes, 2, "The template has changed")
 }
 
+func TestCompareAsyncModes(t *testing.T) {
+	defer tests.PrepareTestEnv(t)()
+
+	session := loginUser(t, "user2")
+	path := "/user2/repo20/compare/add-csv...remove-files-b"
+
+	resp := session.MakeRequest(t, NewRequest(t, "GET", path), http.StatusOK)
+	html := resp.Body.String()
+	assert.Contains(t, html, `id="compare-result"`)
+	assert.Contains(t, html, `data-compare-state="ready"`)
+	assert.NotContains(t, html, `id="diff-file-boxes"`)
+
+	resp = session.MakeRequest(t, NewRequest(t, "GET", path+"?compare-result=true"), http.StatusOK)
+	htmlDoc := NewHTMLParser(t, resp.Body)
+	assert.Equal(t, 1, htmlDoc.doc.Find("#compare-result").Length())
+	assert.Equal(t, 1, htmlDoc.doc.Find("#compare-result #diff-file-boxes").Length())
+	assert.Equal(t, 1, htmlDoc.doc.Find("#compare-result .commit-list").Length())
+
+	resp = session.MakeRequest(t, NewRequest(t, "GET", path+"?compare-full=true"), http.StatusOK)
+	html = resp.Body.String()
+	assert.Contains(t, html, `id="diff-file-boxes"`)
+	assert.NotContains(t, html, `data-global-init="initCompareResult"`)
+	assert.NotContains(t, html, `compare-full=true`)
+
+	session.MakeRequest(t, NewRequest(t, "GET", path+"?compare-result=true&compare-full=true"), http.StatusBadRequest)
+	session.MakeRequest(t, NewRequest(t, "GET", path+"?compare-result=true&file-only=true"), http.StatusBadRequest)
+}
+
 // Ensure the comparison matches what we expect
 func inspectCompare(t *testing.T, htmlDoc *HTMLDoc, diffCount int, diffChanges []string) {
 	selection := htmlDoc.doc.Find("#diff-file-boxes").Children()
@@ -89,7 +117,7 @@ func TestCompareBranches(t *testing.T) {
 	// Indirect compare remove-files-b (head) with add-csv (base) branch
 	//
 	//	'link_hi' and 'test.csv' are deleted, 'test.txt' is added
-	req := NewRequest(t, "GET", "/user2/repo20/compare/add-csv...remove-files-b")
+	req := NewRequest(t, "GET", "/user2/repo20/compare/add-csv...remove-files-b?compare-result=true")
 	resp := session.MakeRequest(t, req, http.StatusOK)
 	htmlDoc := NewHTMLParser(t, resp.Body)
 
@@ -102,7 +130,7 @@ func TestCompareBranches(t *testing.T) {
 	//
 	//	'link_hi' and 'test.csv' are deleted, 'test.txt' is added
 
-	req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-a...remove-files-b")
+	req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-a...remove-files-b?compare-result=true")
 	resp = session.MakeRequest(t, req, http.StatusOK)
 	htmlDoc = NewHTMLParser(t, resp.Body)
 
@@ -115,7 +143,7 @@ func TestCompareBranches(t *testing.T) {
 	//
 	//	'link_hi' and 'test.csv' are deleted
 
-	req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-b...remove-files-a")
+	req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-b...remove-files-a?compare-result=true")
 	resp = session.MakeRequest(t, req, http.StatusOK)
 	htmlDoc = NewHTMLParser(t, resp.Body)
 
@@ -128,7 +156,7 @@ func TestCompareBranches(t *testing.T) {
 	//
 	//	'test.txt' is deleted
 
-	req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-b..remove-files-a")
+	req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-b..remove-files-a?compare-result=true")
 	resp = session.MakeRequest(t, req, http.StatusOK)
 	htmlDoc = NewHTMLParser(t, resp.Body)
 
@@ -144,7 +172,7 @@ func TestCompareWithRefSuffix(t *testing.T) {
 	session := loginUser(t, "user2")
 
 	// remove-files-b^ resolves to the tip's parent, so the test.txt added by the tip is excluded
-	req := NewRequest(t, "GET", "/user2/repo20/compare/add-csv...remove-files-b^")
+	req := NewRequest(t, "GET", "/user2/repo20/compare/add-csv...remove-files-b^?compare-result=true")
 	resp := session.MakeRequest(t, req, http.StatusOK)
 	htmlDoc := NewHTMLParser(t, resp.Body)
 	inspectCompare(t, htmlDoc, 2, []string{"link_hi", "test.csv"})
@@ -153,7 +181,7 @@ func TestCompareWithRefSuffix(t *testing.T) {
 	assert.Equal(t, 0, htmlDoc.doc.Find(".pullrequest-form").Length())
 
 	// the same suffix on the direct ".." comparison resolves to the same commit
-	req = NewRequest(t, "GET", "/user2/repo20/compare/add-csv..remove-files-b^")
+	req = NewRequest(t, "GET", "/user2/repo20/compare/add-csv..remove-files-b^?compare-result=true")
 	resp = session.MakeRequest(t, req, http.StatusOK)
 	htmlDoc = NewHTMLParser(t, resp.Body)
 	inspectCompare(t, htmlDoc, 2, []string{"link_hi", "test.csv"})
@@ -232,6 +260,7 @@ Hello from 2
 	assert.Lenf(t, selection.Nodes, 2, "The template has changed")
 	assert.Contains(t, body, "These branches do not share a common merge base")
 	assert.Equal(t, 1, htmlDoc.doc.Find(`a.item[href="/user2/repo1/compare/master...unrelated-history"]`).Length())
+	assert.Equal(t, 0, htmlDoc.doc.Find("#compare-result #diff-file-boxes").Length())
 	assert.Equal(t, 1, htmlDoc.doc.Find(`a.item[href="/user2/repo1/compare/master...master"]`).Length())
 	assert.Equal(t, 0, htmlDoc.doc.Find(".pullrequest-form").Length())
 }
