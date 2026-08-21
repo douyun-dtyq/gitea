@@ -1,0 +1,9 @@
+<div id="compare-result">
+	{{$showDiffBox := or .CommitCount .DiffShortStat.NumFiles}}
+	{{if $showDiffBox}}
+		<div class="ui container fluid padded tw-my-4">
+			{{template "repo/commits_table" .}}
+			{{template "repo/diff/box" .}}
+		</div>
+	{{end}}
+</div>

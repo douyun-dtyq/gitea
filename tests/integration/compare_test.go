@@ -86,7 +86,7 @@ func TestCompare(t *testing.T) {
 		// Indirect compare remove-files-b (head) with add-csv (base) branch
 		//
 		//	'link_hi' and 'test.csv' are deleted, 'test.txt' is added
-		req := NewRequest(t, "GET", "/user2/repo20/compare/add-csv...remove-files-b")
+		req := NewRequest(t, "GET", "/user2/repo20/compare/add-csv...remove-files-b?compare-full=true")
 		resp := session.MakeRequest(t, req, http.StatusOK)
 		htmlDoc := NewHTMLParser(t, resp.Body)
 
@@ -99,7 +99,7 @@ func TestCompare(t *testing.T) {
 		//
 		//	'link_hi' and 'test.csv' are deleted, 'test.txt' is added
 
-		req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-a...remove-files-b")
+		req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-a...remove-files-b?compare-full=true")
 		resp = session.MakeRequest(t, req, http.StatusOK)
 		htmlDoc = NewHTMLParser(t, resp.Body)
 
@@ -112,7 +112,7 @@ func TestCompare(t *testing.T) {
 		//
 		//	'link_hi' and 'test.csv' are deleted
 
-		req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-b...remove-files-a")
+		req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-b...remove-files-a?compare-full=true")
 		resp = session.MakeRequest(t, req, http.StatusOK)
 		htmlDoc = NewHTMLParser(t, resp.Body)
 
@@ -125,7 +125,7 @@ func TestCompare(t *testing.T) {
 		//
 		//	'test.txt' is deleted
 
-		req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-b..remove-files-a")
+		req = NewRequest(t, "GET", "/user2/repo20/compare/remove-files-b..remove-files-a?compare-full=true")
 		resp = session.MakeRequest(t, req, http.StatusOK)
 		htmlDoc = NewHTMLParser(t, resp.Body)
 
@@ -134,7 +134,7 @@ func TestCompare(t *testing.T) {
 
 		inspectCompare(t, htmlDoc, diffCount, diffChanges)
 
-		req = NewRequest(t, "GET", "/user2/repo20/compare/8babce967f21b9dfa6987f943b91093dac58a4f0..c8e31bc7688741a5287fcde4fbb8fc129ca07027")
+		req = NewRequest(t, "GET", "/user2/repo20/compare/8babce967f21b9dfa6987f943b91093dac58a4f0..c8e31bc7688741a5287fcde4fbb8fc129ca07027?compare-full=true")
 		resp = session.MakeRequest(t, req, http.StatusOK)
 		htmlDoc = NewHTMLParser(t, resp.Body)
 
@@ -148,7 +148,7 @@ func TestCompare(t *testing.T) {
 		session := loginUser(t, "user2")
 
 		// remove-files-b^ resolves to the tip's parent, so the test.txt added by the tip is excluded
-		req := NewRequest(t, "GET", "/user2/repo20/compare/add-csv...remove-files-b^")
+		req := NewRequest(t, "GET", "/user2/repo20/compare/add-csv...remove-files-b^?compare-full=true")
 		resp := session.MakeRequest(t, req, http.StatusOK)
 		htmlDoc := NewHTMLParser(t, resp.Body)
 		inspectCompare(t, htmlDoc, 2, []string{"link_hi", "test.csv"})
@@ -157,14 +157,14 @@ func TestCompare(t *testing.T) {
 		assert.Equal(t, 0, htmlDoc.doc.Find(".pullrequest-form").Length())
 
 		// the same suffix on the direct ".." comparison resolves to the same commit
-		req = NewRequest(t, "GET", "/user2/repo20/compare/add-csv..remove-files-b^")
+		req = NewRequest(t, "GET", "/user2/repo20/compare/add-csv..remove-files-b^?compare-full=true")
 		resp = session.MakeRequest(t, req, http.StatusOK)
 		htmlDoc = NewHTMLParser(t, resp.Body)
 		inspectCompare(t, htmlDoc, 2, []string{"link_hi", "test.csv"})
 
 		// a ~N suffix on the base side resolves and renders the compare page, but also
 		// resolves to a commit rather than a branch, so no pull request form is offered
-		req = NewRequest(t, "GET", "/user2/repo20/compare/add-csv~1...remove-files-b")
+		req = NewRequest(t, "GET", "/user2/repo20/compare/add-csv~1...remove-files-b?compare-full=true")
 		resp = session.MakeRequest(t, req, http.StatusOK)
 		assert.True(t, test.IsNormalPageCompleted(resp.Body.String()))
 		htmlDoc = NewHTMLParser(t, resp.Body)
@@ -318,7 +318,7 @@ func TestCompareCodeExpand(t *testing.T) {
 		testCreateBranch(t, session, user2.Name, "test_blob_excerpt-fork", "branch/main", "forked-branch", http.StatusSeeOther)
 		testEditFile(t, session, user2.Name, "test_blob_excerpt-fork", "forked-branch", "README.md", strings.Repeat("a\n", 15)+"CHANGED\n"+strings.Repeat("a\n", 15))
 
-		req := NewRequest(t, "GET", "/user1/test_blob_excerpt/compare/main...user2/test_blob_excerpt-fork:forked-branch")
+		req := NewRequest(t, "GET", "/user1/test_blob_excerpt/compare/main...user2/test_blob_excerpt-fork:forked-branch?compare-full=true")
 		resp := session.MakeRequest(t, req, http.StatusOK)
 		htmlDoc := NewHTMLParser(t, resp.Body)
 		els := htmlDoc.Find(`button.code-expander-button[data-fetch-url]`)

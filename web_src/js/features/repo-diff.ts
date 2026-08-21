@@ -257,6 +257,39 @@ function initDiffCommitSelect(el: HTMLElement) {
   createApp(DiffCommitSelector).mount(el);
 }
 
+let compareResultLoadPromise: Promise<void> | null = null;
+
+export function buildCompareResultURL(currentURL: string): string {
+  const url = new URL(currentURL, window.location.origin);
+  url.searchParams.delete('file-only');
+  url.searchParams.delete('compare-full');
+  url.searchParams.set('compare-result', 'true');
+  return url.href;
+}
+
+async function initCompareResult(el: HTMLElement) {
+  if (el.getAttribute('data-compare-state') !== 'ready') return;
+  if (!compareResultLoadPromise) {
+    compareResultLoadPromise = (async () => {
+      try {
+        const response = await GET(buildCompareResultURL(window.location.href));
+        if (!response.ok) throw new Error(`compare result request failed: ${response.status}`);
+        const responseDocument = parseDom(await response.text(), 'text/html');
+        const result = responseDocument.querySelector<HTMLElement>('#compare-result');
+        if (!result) throw new Error('compare result container missing');
+        el.replaceWith(result);
+        // the global init observer takes care of the data-global-init elements inside
+        initExpandAndCollapseFilesButton();
+        onLocationHashChange();
+      } catch (error) {
+        console.error('Failed to load compare result:', error);
+        showErrorToast(errorMessage(error) ?? el.getAttribute('data-error-message')!);
+      }
+    })();
+  }
+  await compareResultLoadPromise;
+}
+
 export function initRepoDiffView() {
   initRepoDiffConversationForm(); // such form appears on the "conversation" page and "diff" page
   registerGlobalEventFunc('click', 'diffLoadMoreFiles', (el) => { diffLoadMoreFiles(el) });
@@ -268,6 +301,7 @@ export function initRepoDiffView() {
   registerGlobalInitFunc('initDiffFileViewToggle', initDiffFileViewToggle);
   registerGlobalInitFunc('initDiffFileTree', initDiffFileTree);
   registerGlobalInitFunc('initDiffCommitSelect', initDiffCommitSelect);
+  registerGlobalInitFunc('initCompareResult', initCompareResult);
 
   if (!document.querySelector('#diff-file-boxes')) return;
   initRepoDiffConversationNav(); // "previous" and "next" buttons only appear on "diff" page

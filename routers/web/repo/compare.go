@@ -43,10 +43,22 @@ import (
 )
 
 const (
-	tplCompare     templates.TplName = "repo/diff/compare"
-	tplBlobExcerpt templates.TplName = "repo/diff/blob_excerpt"
-	tplDiffBox     templates.TplName = "repo/diff/box"
+	tplCompare       templates.TplName = "repo/diff/compare"
+	tplCompareResult templates.TplName = "repo/diff/compare_result"
+	tplBlobExcerpt   templates.TplName = "repo/diff/blob_excerpt"
+	tplDiffBox       templates.TplName = "repo/diff/box"
+
+	compareResultParam = "compare-result"
+	compareFullParam   = "compare-full"
 )
+
+func compareFallbackURL(ctx *context.Context) string {
+	query := ctx.Req.URL.Query()
+	query.Del("file-only")
+	query.Del(compareResultParam)
+	query.Set(compareFullParam, "true")
+	return ctx.Link + "?" + query.Encode()
+}
 
 // setCompareContext sets context data.
 func setCompareContext(ctx *context.Context, before, head *git.Commit, headOwner, headName string) {
@@ -160,7 +172,7 @@ func newComparePageInfo() *comparePageInfoType {
 }
 
 // parseCompareInfo parse compare info between two commit for preparing comparing references
-func (cpi *comparePageInfoType) parseCompareInfo(ctx *context.Context, compareParam string) error {
+func (cpi *comparePageInfoType) parseCompareInfo(ctx *context.Context, compareParam string, loadCommits bool) error {
 	baseRepo := ctx.Repo.Repository
 	fileOnly := ctx.FormBool("file-only")
 
@@ -317,7 +329,7 @@ func (cpi *comparePageInfoType) parseCompareInfo(ctx *context.Context, comparePa
 		HeadRepo:    headRepo,
 		HeadGitRepo: headGitRepo,
 		HeadRef:     headRef,
-	}, compareReq.DirectComparison(), fileOnly)
+	}, compareReq.DirectComparison(), fileOnly || !loadCommits)
 	if err != nil {
 		return err
 	}
@@ -391,8 +403,8 @@ func prepareNewPullRequestTitleContent(ci *git_service.CompareInfo, commits []*g
 	return title, content
 }
 
-// prepareCompareDiff renders compare diff page. TODO: need to refactor it and other "compare diff" related functions together
-func (cpi *comparePageInfoType) prepareCompareDiff(ctx *context.Context, whitespaceBehavior gitcmd.TrustedCmdArgs) {
+// prepareCompareFormState prepares the pull request form state, which does not need the diff.
+func (cpi *comparePageInfoType) prepareCompareFormState(ctx *context.Context) {
 	ci := cpi.compareInfo
 	if ci.CompareBase == "" {
 		cpi.nothingToCompare = true
@@ -423,8 +435,19 @@ func (cpi *comparePageInfoType) prepareCompareDiff(ctx *context.Context, whitesp
 		cpi.allowEmptyPull = supportEmptyPr && acrossRepoPr
 
 		cpi.nothingToCompare = true
+	}
+}
+
+// prepareCompareDiff renders compare diff page. TODO: need to refactor it and other "compare diff" related functions together
+func (cpi *comparePageInfoType) prepareCompareDiff(ctx *context.Context, whitespaceBehavior gitcmd.TrustedCmdArgs) {
+	cpi.prepareCompareFormState(ctx)
+	ci := cpi.compareInfo
+	if ci.CompareBase == "" || cpi.nothingToCompare {
 		return
 	}
+	headCommitID := ci.HeadCommitID
+
+	repo := ctx.Repo.Repository
 
 	beforeCommitID := ci.CompareBase
 
@@ -527,7 +550,17 @@ func getBranchesAndTagsForRepo(ctx gocontext.Context, repo *repo_model.Repositor
 // CompareDiff show different from one commit to another commit
 func CompareDiff(ctx *context.Context) {
 	comparePageInfo := newComparePageInfo()
-	err := comparePageInfo.parseCompareInfo(ctx, ctx.PathParam("*"))
+	query := ctx.Req.URL.Query()
+	fileOnly := ctx.FormBool("file-only")
+	resultFragment := query.Has(compareResultParam)
+	fullPage := query.Has(compareFullParam)
+	if fileOnly && (resultFragment || fullPage) || resultFragment && fullPage {
+		ctx.HTTPError(http.StatusBadRequest, "compare query parameters are mutually exclusive")
+		return
+	}
+	loadCommits := !fileOnly && (resultFragment || fullPage)
+
+	err := comparePageInfo.parseCompareInfo(ctx, ctx.PathParam("*"), loadCommits)
 	if errors.Is(err, util.ErrNotExist) || errors.Is(err, util.ErrInvalidArgument) {
 		ctx.NotFound()
 		return
@@ -547,9 +580,16 @@ func CompareDiff(ctx *context.Context) {
 	ctx.Data["CompareInfo"] = ci
 
 	// TODO: need to refactor "prepare compare" related functions together
-	comparePageInfo.prepareCompareDiff(ctx, gitdiff.GetWhitespaceFlag(GetWhitespaceBehavior(ctx)))
-	if ctx.Written() {
-		return
+	if fullPage || resultFragment || fileOnly {
+		comparePageInfo.prepareCompareDiff(ctx, gitdiff.GetWhitespaceFlag(GetWhitespaceBehavior(ctx)))
+		if ctx.Written() {
+			return
+		}
+	} else {
+		comparePageInfo.prepareCompareFormState(ctx)
+		if ctx.Written() {
+			return
+		}
 	}
 
 	baseTags, err := repo_model.GetTagNamesByRepoID(ctx, ctx.Repo.Repository.ID)
@@ -559,7 +599,6 @@ func CompareDiff(ctx *context.Context) {
 	}
 	ctx.Data["Tags"] = baseTags
 
-	fileOnly := ctx.FormBool("file-only")
 	if fileOnly {
 		ctx.HTML(http.StatusOK, tplDiffBox)
 		return
@@ -579,6 +618,21 @@ func CompareDiff(ctx *context.Context) {
 		return
 	}
 
+	if resultFragment {
+		if ci.CompareBase != "" {
+			comparePageInfo.prepareCreatePullRequestPage(ctx)
+			if ctx.Written() {
+				return
+			}
+		} else {
+			comparePageInfo.nothingToCompare = true
+		}
+		ctx.Data["PageIsComparePull"] = comparePageInfo.allowCreatePull
+		ctx.Data["IsNothingToCompare"] = comparePageInfo.nothingToCompare
+		ctx.HTML(http.StatusOK, tplCompareResult)
+		return
+	}
+
 	if ci.CompareBase != "" {
 		comparePageInfo.prepareCreatePullRequestPage(ctx)
 		if ctx.Written() {
@@ -593,6 +647,11 @@ func CompareDiff(ctx *context.Context) {
 	ctx.Data["CanCreatePullRequest"] = comparePageInfo.allowCreatePull && !ci.DirectComparison() &&
 		(comparePageInfo.allowEmptyPull || !comparePageInfo.nothingToCompare) &&
 		ctx.Repo.PullRequestCtx.CanCreateNewPull()
+	if fullPage {
+		ctx.Data["CompareFull"] = true
+	} else {
+		ctx.Data["CompareFallbackURL"] = compareFallbackURL(ctx)
+	}
 	ctx.HTML(http.StatusOK, tplCompare)
 }
 
