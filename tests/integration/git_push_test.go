@@ -254,3 +254,51 @@ func TestPushPullRefs(t *testing.T) {
 		assert.NotContains(t, stderr, "[deleted]", "stderr: %s", stderr)
 	})
 }
+
+func TestPushDeleteProtectedBranch(t *testing.T) {
+	onGiteaRun(t, func(t *testing.T, u *url.URL) {
+		user := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 2}) // user2
+		repo, err := repo_service.CreateRepository(t.Context(), user, user, repo_service.CreateRepoOptions{
+			Name:          "repo-delete-protected-branch",
+			DefaultBranch: "master",
+		})
+		require.NoError(t, err)
+
+		gitPath := t.TempDir()
+		doGitInitTestRepository(gitPath)(t)
+
+		u.Path = repo.FullName() + ".git"
+		u.User = url.UserPassword(user.LowerName, userPassword)
+		doGitAddRemote(gitPath, "origin", u)(t)
+
+		doGitPushTestRepository(gitPath, "origin", "master")(t)
+		doGitCreateBranch(gitPath, "feat/a")(t)
+		doGitPushTestRepository(gitPath, "origin", "feat/a")(t)
+		doGitCheckoutBranch(gitPath, "master")(t)
+		doGitCreateBranch(gitPath, "feat/b")(t)
+		doGitPushTestRepository(gitPath, "origin", "feat/b")(t)
+		doGitCheckoutBranch(gitPath, "master")(t)
+		doGitCreateBranch(gitPath, "feat/c")(t)
+		doGitPushTestRepository(gitPath, "origin", "feat/c")(t)
+
+		ctx := NewAPITestContext(t, user.LowerName, repo.Name, auth_model.AccessTokenScopeWriteRepository)
+
+		// feat/a allows the owner to push but not force-push, so deletion is rejected.
+		doProtectBranch(ctx, "feat/a", user.LowerName, "", "", "")(t)
+		// feat/b allows the owner to force-push, so they can delete it.
+		doProtectBranch(ctx, "feat/b", user.LowerName, user.LowerName, "", "")(t)
+		// feat/c force-allowlists user4 (not a collaborator), so the owner cannot delete it.
+		doProtectBranch(ctx, "feat/c", user.LowerName, "user4", "", "")(t)
+
+		_, _, err = gitcmd.NewCommand("push", "origin", "--delete", "feat/a").WithDir(gitPath).RunStdString(t.Context())
+		assert.Error(t, err)
+
+		_, _, err = gitcmd.NewCommand("push", "origin", "--delete", "feat/b").WithDir(gitPath).RunStdString(t.Context())
+		assert.NoError(t, err)
+
+		_, _, err = gitcmd.NewCommand("push", "origin", "--delete", "feat/c").WithDir(gitPath).RunStdString(t.Context())
+		assert.Error(t, err)
+
+		require.NoError(t, repo_service.DeleteRepositoryDirectly(t.Context(), repo.ID))
+	})
+}

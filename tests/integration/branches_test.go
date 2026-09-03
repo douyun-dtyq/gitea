@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"gitea.dev/models/db"
+	git_model "gitea.dev/models/git"
 	repo_model "gitea.dev/models/repo"
 	"gitea.dev/models/unittest"
 	"gitea.dev/modules/translation"
@@ -35,6 +36,21 @@ func TestViewBranches(t *testing.T) {
 	htmlDoc = NewHTMLParser(t, resp.Body)
 	AssertHTMLElement(t, htmlDoc, "[data-testid=branches-default-branch-list]", 0)
 	AssertHTMLElement(t, htmlDoc, "[data-testid=branches-default-branch-not-exist]", 1)
+}
+
+func TestViewBranchesWithProtectedBranch(t *testing.T) {
+	defer tests.PrepareTestEnv(t)()
+
+	repo1 := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1})
+	require.NoError(t, git_model.UpdateProtectBranch(t.Context(), repo1, &git_model.ProtectedBranch{
+		RepoID:          repo1.ID,
+		RuleName:        "feature/1",
+		CanPush:         true,
+		EnableWhitelist: true,
+	}, git_model.WhitelistOptions{UserIDs: []int64{2}}))
+
+	// Anonymous viewing of the branch list must not panic on a whitelisted protected branch.
+	MakeRequest(t, NewRequest(t, "GET", "/user2/repo1/branches"), http.StatusOK)
 }
 
 func TestUndoDeleteBranch(t *testing.T) {

@@ -14,6 +14,7 @@ import (
 	auth_model "gitea.dev/models/auth"
 	"gitea.dev/models/db"
 	git_model "gitea.dev/models/git"
+	"gitea.dev/models/perm"
 	api "gitea.dev/modules/structs"
 	"gitea.dev/tests"
 
@@ -437,6 +438,67 @@ func testAPIBranchProtectionBypassAllowlistValidation(t *testing.T) {
 			AddTokenAuth(token)
 		MakeRequest(t, deleteReq, http.StatusNoContent)
 	})
+}
+
+func TestAPIBranchProtectionDeletePermission(t *testing.T) {
+	defer tests.PrepareTestEnv(t)()
+
+	ownerCtx := NewAPITestContext(t, "user2", "repo1", auth_model.AccessTokenScopeWriteRepository)
+	t.Run("AddUser4AsWriteCollaborator", doAPIAddCollaborator(ownerCtx, "user4", perm.AccessModeWrite))
+
+	// Force-push disabled: a push-allowlisted collaborator still cannot delete.
+	t.Run("ForbiddenWhenForcePushDisabled", func(t *testing.T) {
+		createBranchProtectionForDelete(t, api.CreateBranchProtectionOption{
+			RuleName:               "develop",
+			EnablePush:             true,
+			EnablePushWhitelist:    true,
+			PushWhitelistUsernames: []string{"user4"},
+		})
+		testAPIDeleteBranchAs(t, "user4", "develop", http.StatusForbidden)
+	})
+
+	// Deleting requires both push and force-push permission.
+	t.Run("ForbiddenWhenNotForceAllowlisted", func(t *testing.T) {
+		createBranchProtectionForDelete(t, api.CreateBranchProtectionOption{
+			RuleName:                    "feature/1",
+			EnablePush:                  true,
+			EnablePushWhitelist:         true,
+			PushWhitelistUsernames:      []string{"user4"},
+			EnableForcePush:             true,
+			EnableForcePushAllowlist:    true,
+			ForcePushAllowlistUsernames: []string{"user2"},
+		})
+		// user4 may push but is not force-allowlisted.
+		testAPIDeleteBranchAs(t, "user4", "feature/1", http.StatusForbidden)
+		// user2 is force-allowlisted but not push-allowlisted.
+		testAPIDeleteBranchAs(t, "user2", "feature/1", http.StatusForbidden)
+	})
+
+	// The force-allowlisted collaborator can delete.
+	t.Run("AllowedForForceAllowlistedUser", func(t *testing.T) {
+		createBranchProtectionForDelete(t, api.CreateBranchProtectionOption{
+			RuleName:                    "branch2",
+			EnablePush:                  true,
+			EnablePushWhitelist:         true,
+			PushWhitelistUsernames:      []string{"user4"},
+			EnableForcePush:             true,
+			EnableForcePushAllowlist:    true,
+			ForcePushAllowlistUsernames: []string{"user4"},
+		})
+		testAPIDeleteBranchAs(t, "user4", "branch2", http.StatusNoContent)
+	})
+}
+
+func createBranchProtectionForDelete(t *testing.T, body api.CreateBranchProtectionOption) {
+	token := getUserToken(t, "user2", auth_model.AccessTokenScopeWriteRepository)
+	req := NewRequestWithJSON(t, "POST", "/api/v1/repos/user2/repo1/branch_protections", &body).AddTokenAuth(token)
+	MakeRequest(t, req, http.StatusCreated)
+}
+
+func testAPIDeleteBranchAs(t *testing.T, username, branchName string, expectedHTTPStatus int) {
+	token := getUserToken(t, username, auth_model.AccessTokenScopeWriteRepository)
+	req := NewRequestf(t, "DELETE", "/api/v1/repos/user2/repo1/branches/%s", branchName).AddTokenAuth(token)
+	MakeRequest(t, req, expectedHTTPStatus)
 }
 
 func TestAPICreateBranchWithSyncBranches(t *testing.T) {
