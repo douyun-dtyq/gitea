@@ -184,14 +184,20 @@ func preReceiveBranch(ctx *preReceiveContext, oldCommitID, newCommitID string, r
 
 	// This ref is a protected branch.
 	//
-	// First of all we need to enforce absolutely:
-	//
-	// 1. Detect and prevent deletion of the branch
+	// 1. Deletion follows the same policy as force-push: only someone allowed to force-push may delete
 	if newCommitID == objectFormat.EmptyObjectID().String() {
-		log.Warn("Forbidden: Branch: %s in %-v is protected from deletion", branchName, repo)
-		ctx.JSON(http.StatusForbidden, private.Response{
-			UserMsg: fmt.Sprintf("branch %s is protected from deletion", branchName),
-		})
+		var canDelete bool
+		if ctx.opts.DeployKeyID != 0 {
+			canDelete = protectBranch.CanForcePush && protectBranch.CanPush && (!protectBranch.EnableForcePushAllowlist || protectBranch.ForcePushAllowlistDeployKeys)
+		} else {
+			canDelete = protectBranch.CanUserForcePush(ctx, ctx.user)
+		}
+		if !canDelete {
+			log.Warn("Forbidden: Branch: %s in %-v is protected from deletion", branchName, repo)
+			ctx.JSON(http.StatusForbidden, private.Response{
+				UserMsg: fmt.Sprintf("branch %s is protected from deletion", branchName),
+			})
+		}
 		return
 	}
 
