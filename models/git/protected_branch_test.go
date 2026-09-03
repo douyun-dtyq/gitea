@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gitea.dev/models/db"
+	access_model "gitea.dev/models/perm/access"
 	repo_model "gitea.dev/models/repo"
 	"gitea.dev/models/unittest"
 	user_model "gitea.dev/models/user"
@@ -201,4 +202,70 @@ func TestCanBypassBranchProtection(t *testing.T) {
 
 	// User does not bypass when not in allowlisted teams.
 	testBypass(t, false, pb, user, false)
+}
+
+func TestCanUserPush(t *testing.T) {
+	assert.NoError(t, unittest.PrepareTestDatabase())
+
+	owner := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 2}) // owner of repo 1
+	other := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 1})
+	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1})
+
+	ownerPerm, err := access_model.GetDoerRepoPermission(t.Context(), repo, owner)
+	assert.NoError(t, err)
+	otherPerm, err := access_model.GetDoerRepoPermission(t.Context(), repo, other)
+	assert.NoError(t, err)
+
+	t.Run("PushDisabled", func(t *testing.T) {
+		pb := &ProtectedBranch{CanPush: false, Repo: repo}
+		assert.False(t, pb.CanUserPush(t.Context(), owner, ownerPerm))
+	})
+
+	t.Run("WriteAccessWithoutWhitelist", func(t *testing.T) {
+		pb := &ProtectedBranch{CanPush: true, Repo: repo}
+		assert.True(t, pb.CanUserPush(t.Context(), owner, ownerPerm))
+	})
+
+	t.Run("WhitelistedUser", func(t *testing.T) {
+		pb := &ProtectedBranch{CanPush: true, EnableWhitelist: true, WhitelistUserIDs: []int64{owner.ID}}
+		assert.True(t, pb.CanUserPush(t.Context(), owner, ownerPerm))
+	})
+
+	t.Run("NotWhitelistedUser", func(t *testing.T) {
+		pb := &ProtectedBranch{CanPush: true, EnableWhitelist: true, WhitelistUserIDs: []int64{owner.ID}}
+		assert.False(t, pb.CanUserPush(t.Context(), other, otherPerm))
+	})
+}
+
+func TestCanUserForcePush(t *testing.T) {
+	assert.NoError(t, unittest.PrepareTestDatabase())
+
+	owner := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 2}) // owner of repo 1
+	other := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 1})
+	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1})
+
+	ownerPerm, err := access_model.GetDoerRepoPermission(t.Context(), repo, owner)
+	assert.NoError(t, err)
+	otherPerm, err := access_model.GetDoerRepoPermission(t.Context(), repo, other)
+	assert.NoError(t, err)
+
+	t.Run("ForcePushDisabled", func(t *testing.T) {
+		pb := &ProtectedBranch{CanPush: true, Repo: repo}
+		assert.False(t, pb.CanUserForcePush(t.Context(), owner, ownerPerm))
+	})
+
+	t.Run("WriteAccessWithoutForceAllowlist", func(t *testing.T) {
+		pb := &ProtectedBranch{CanPush: true, CanForcePush: true, Repo: repo}
+		assert.True(t, pb.CanUserForcePush(t.Context(), owner, ownerPerm))
+	})
+
+	t.Run("ForceAllowlistedUser", func(t *testing.T) {
+		pb := &ProtectedBranch{CanPush: true, CanForcePush: true, EnableForcePushAllowlist: true, ForcePushAllowlistUserIDs: []int64{owner.ID}, Repo: repo}
+		assert.True(t, pb.CanUserForcePush(t.Context(), owner, ownerPerm))
+	})
+
+	t.Run("NotForceAllowlistedUser", func(t *testing.T) {
+		pb := &ProtectedBranch{CanPush: true, CanForcePush: true, EnableForcePushAllowlist: true, ForcePushAllowlistUserIDs: []int64{owner.ID}, Repo: repo}
+		assert.False(t, pb.CanUserForcePush(t.Context(), other, otherPerm))
+	})
 }
