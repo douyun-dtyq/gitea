@@ -305,6 +305,11 @@ func hasPullRequestCommitBeenMerged(ctx context.Context, pr *issues_model.PullRe
 // Merge merges pull request to base repository.
 // Caller should check PR is ready to be merged (review and status checks)
 func Merge(outerCtx context.Context, prID int64, doer *user_model.User, mergeStyle repo_model.MergeStyle, expectedHeadCommitID, message string, wasAutoMerged bool) error {
+	return MergeWithIdentity(outerCtx, prID, doer, mergeStyle, expectedHeadCommitID, message, wasAutoMerged, nil)
+}
+
+// MergeWithIdentity merges a PR with an optional runtime commit identity.
+func MergeWithIdentity(outerCtx context.Context, prID int64, doer *user_model.User, mergeStyle repo_model.MergeStyle, expectedHeadCommitID, message string, wasAutoMerged bool, identity *git.Signature) error {
 	outerCtxId := uuid.NewV4().String()
 
 	_, outerSpan := gtprof.GetTracer().Start(outerCtx, gtprof.TraceSpanContext)
@@ -348,6 +353,7 @@ func Merge(outerCtx context.Context, prID int64, doer *user_model.User, mergeSty
 		if !hasCommitBeenMerged {
 			_, err = doMergeAndPush(ctx, pr, doer, mergeStyle, message, mergeAndPushOptions{
 				expectedHeadCommitID: expectedHeadCommitID,
+				identity:             identity,
 				onMergedIntoTempBase: func(commitID string) error {
 					return recordMergeIntent(ctx, pr, doer, commitID, wasAutoMerged)
 				},
@@ -444,13 +450,14 @@ func handleCloseCrossReferences(ctx context.Context, pr *issues_model.PullReques
 
 type mergeAndPushOptions struct {
 	expectedHeadCommitID string
+	identity             *git.Signature
 	onMergedIntoTempBase func(commitID string) error
 }
 
 // doMergeAndPush performs the merge operation without changing any pull information in database and pushes it up to the base repository
 func doMergeAndPush(ctx context.Context, pr *issues_model.PullRequest, doer *user_model.User, mergeStyle repo_model.MergeStyle, message string, opts mergeAndPushOptions) (string, error) { //nolint:unparam // non-error result is never used
 	// Clone base repo.
-	mergeCtx, cancel, err := createTemporaryRepoForMerge(ctx, pr, doer, opts.expectedHeadCommitID)
+	mergeCtx, cancel, err := createTemporaryRepoForMerge(ctx, pr, doer, opts.expectedHeadCommitID, opts.identity)
 	if err != nil {
 		return "", err
 	}

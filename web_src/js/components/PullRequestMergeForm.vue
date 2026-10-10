@@ -2,6 +2,7 @@
 import {computed, onMounted, onUnmounted, shallowRef, watch} from 'vue';
 import SvgIcon from './SvgIcon.vue';
 import {toggleElem} from '../utils/dom.ts';
+import {readStoredIdentity, writeStoredIdentity} from '../features/commit-identity.ts';
 
 type MergeStyle = {
   name: string,
@@ -35,6 +36,11 @@ type MergeForm = {
   textClearMergeMessageHint: string,
   textDeleteBranch: string,
   textMergeCommitId: string,
+  textCommitterName: string,
+  textCommitterEmail: string,
+  committerCandidateEmails: string[],
+  committerDefaultEmail: string,
+  committerDefaultName: string,
 };
 
 const props = defineProps<{
@@ -73,6 +79,22 @@ const mergeSelectStyleClass = computed(() => {
 
 const forceMerge = computed(() => {
   return mergeForm.canMergeNow && !mergeForm.allOverridableChecksOk;
+});
+
+const mergeStyleUsesCommitterIdentity = computed(() => {
+  return ['merge', 'rebase-merge', 'squash'].includes(mergeStyle.value);
+});
+
+const committerName = shallowRef(mergeForm.committerDefaultName);
+const committerEmail = shallowRef(mergeForm.committerDefaultEmail);
+const storedCommitterIdentity = readStoredIdentity('committer');
+if (storedCommitterIdentity) {
+  if (storedCommitterIdentity.name) committerName.value = storedCommitterIdentity.name;
+  const known = mergeForm.committerCandidateEmails.some((email) => email.toLowerCase() === storedCommitterIdentity.email.toLowerCase());
+  if (known) committerEmail.value = storedCommitterIdentity.email;
+}
+watch([committerName, committerEmail], () => {
+  writeStoredIdentity('committer', {name: committerName.value, email: committerEmail.value});
 });
 
 watch(mergeStyle, (val) => {
@@ -156,6 +178,19 @@ function clearMergeMessage() {
       <div class="field" v-if="mergeStyle === mergeStyleManuallyMerged">
         <input type="text" name="merge_commit_id" :placeholder="mergeForm.textMergeCommitId">
       </div>
+
+      <template v-if="!autoMergeWhenSucceed && mergeStyleUsesCommitterIdentity">
+        <div class="field">
+          <label for="committer_name">{{ mergeForm.textCommitterName }}</label>
+          <input type="text" id="committer_name" name="committer_name" maxlength="100" v-model="committerName">
+        </div>
+        <div class="field" v-if="mergeForm.committerCandidateEmails.length > 1">
+          <label for="committer_email">{{ mergeForm.textCommitterEmail }}</label>
+          <select id="committer_email" class="ui selection dropdown" name="committer_email" v-model="committerEmail">
+            <option v-for="email in mergeForm.committerCandidateEmails" :key="email" :value="email">{{ email }}</option>
+          </select>
+        </div>
+      </template>
 
       <div class="flex-text-block tw-gap-3">
         <button class="ui button" :class="mergeButtonStyleClass" type="submit" name="do" :value="mergeStyle">

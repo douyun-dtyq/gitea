@@ -320,6 +320,26 @@ func testEditorWebGitCommitEmail(t *testing.T) {
 		)
 	})
 
+	t.Run("ChooseName", func(t *testing.T) {
+		defer tests.PrintCurrentTest(t)()
+		makeReq(t, "/user2/repo1/_edit/master/README.md", map[string]string{
+			"tree_path":    "README.md",
+			"content":      "for chosen name",
+			"commit_name":  "Chosen Name",
+			"commit_email": "user2@example.com",
+		}, "Chosen Name", "user2@example.com")
+	})
+
+	t.Run("NameWithControlChars", func(t *testing.T) {
+		defer tests.PrintCurrentTest(t)()
+		makeReq(t, "/user2/repo1/_edit/master/README.md", map[string]string{
+			"tree_path":    "README.md",
+			"content":      "for invalid name",
+			"commit_name":  "Bad <Name>",
+			"commit_email": "user2@example.com",
+		}, "", "")
+	})
+
 	t.Run("UploadDelete", func(t *testing.T) {
 		file1UUID := uploadFile(t, "file1", "File 1")
 		file2UUID := uploadFile(t, "file2", "File 2")

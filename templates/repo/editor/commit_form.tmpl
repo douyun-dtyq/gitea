@@ -67,10 +67,14 @@
 				</div>
 			{{end}}
 		</div>
+		<div class="field">
+			<label for="commit_name">{{ctx.Locale.Tr "repo.editor.commit_name"}}</label>
+			<input type="text" id="commit_name" name="commit_name" maxlength="100" value="{{.CommitDefaultName}}">
+		</div>
 		{{if and .CommitCandidateEmails (gt (len .CommitCandidateEmails) 1)}}
 			<div class="field">
-				<label>{{ctx.Locale.Tr "repo.editor.commit_email"}}</label>
-				<select class="ui selection dropdown" name="commit_email">
+				<label for="commit_email">{{ctx.Locale.Tr "repo.editor.commit_email"}}</label>
+				<select id="commit_email" class="ui selection dropdown" name="commit_email">
 					{{- range $email := .CommitCandidateEmails -}}
 						<option {{if eq $email $.CommitDefaultEmail}}selected{{end}} value="{{$email}}">{{$email}}</option>
 					{{- end -}}

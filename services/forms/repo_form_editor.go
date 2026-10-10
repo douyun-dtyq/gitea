@@ -17,6 +17,7 @@ type CommitCommonForm struct {
 	NewBranchName string `binding:"GitRefName;MaxSize(100)"`
 	LastCommit    string
 	Signoff       bool
+	CommitName    string
 	CommitEmail   string
 }
 

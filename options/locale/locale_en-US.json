@@ -1287,6 +1287,7 @@
   "repo.editor.cancel": "Cancel",
   "repo.editor.filename_cannot_be_empty": "The filename cannot be empty.",
   "repo.editor.filename_is_invalid": "The filename is invalid: \"%s\".",
+  "repo.editor.commit_name": "Commit name",
   "repo.editor.commit_email": "Commit email address",
   "repo.editor.invalid_commit_email": "The email address for the commit is invalid.",
   "repo.editor.branch_does_not_exist": "Branch \"%s\" does not exist in this repository.",

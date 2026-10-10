@@ -83,6 +83,11 @@ func (prInfo *pullRequestViewInfo) prepareMergeBoxFormProps(ctx *context.Context
 		}
 	}
 
+	WebGitOperationCommonData(ctx)
+	committerCandidateEmails, _ := ctx.Data["CommitCandidateEmails"].([]string)
+	committerDefaultEmail, _ := ctx.Data["CommitDefaultEmail"].(string)
+	committerDefaultName, _ := ctx.Data["CommitDefaultName"].(string)
+
 	allOverridableChecksOk := !prInfo.MergeBoxData.hasOverridableBlockers
 	mergeFormProps := map[string]any{
 		"baseLink":                       prInfo.issue.Link(),
@@ -94,6 +99,8 @@ func (prInfo *pullRequestViewInfo) prepareMergeBoxFormProps(ctx *context.Context
 		"textClearMergeMessage":          ctx.Locale.Tr("repo.pulls.clear_merge_message"),
 		"textClearMergeMessageHint":      ctx.Locale.Tr("repo.pulls.clear_merge_message_hint"),
 		"textMergeCommitId":              ctx.Locale.Tr("repo.pulls.merge_commit_id"),
+		"textCommitterName":              ctx.Locale.Tr("repo.editor.commit_name"),
+		"textCommitterEmail":             ctx.Locale.Tr("repo.editor.commit_email"),
 
 		"canMergeNow":                   prInfo.MergeBoxData.canMergeNow,
 		"allOverridableChecksOk":        allOverridableChecksOk,
@@ -104,6 +111,9 @@ func (prInfo *pullRequestViewInfo) prepareMergeBoxFormProps(ctx *context.Context
 		"defaultDeleteBranchAfterMerge": prConfig.DefaultDeleteBranchAfterMerge,
 		"mergeMessageFieldPlaceHolder":  ctx.Locale.Tr("repo.editor.commit_message_desc"),
 		"defaultMergeMessage":           defaultMergeBody,
+		"committerCandidateEmails":      committerCandidateEmails,
+		"committerDefaultEmail":         committerDefaultEmail,
+		"committerDefaultName":          committerDefaultName,
 
 		"hasPendingPullRequestMerge":    hasPendingPullRequestMerge,
 		"hasPendingPullRequestMergeTip": hasPendingPullRequestMergeTip,

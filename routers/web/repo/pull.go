@@ -1145,7 +1145,19 @@ func MergePullRequest(ctx *context.Context) {
 		}
 	}
 
-	if err := pull_service.Merge(ctx, pr.ID, ctx.Doer, repo_model.MergeStyle(form.Do), form.HeadCommitID, message, false); err != nil {
+	var commitIdentity *git.Signature
+	switch repo_model.MergeStyle(form.Do) {
+	case repo_model.MergeStyleMerge, repo_model.MergeStyleRebaseMerge, repo_model.MergeStyleSquash:
+		WebGitOperationCommonData(ctx)
+		identity, valid := WebGitOperationGetCommitChosenEmailIdentity(ctx, ctx.FormString("committer_name"), ctx.FormString("committer_email"))
+		if !valid {
+			ctx.JSONError(ctx.Tr("repo.editor.invalid_commit_email"))
+			return
+		}
+		commitIdentity = &git.Signature{Name: identity.GitUserName, Email: identity.GitUserEmail}
+	}
+
+	if err := pull_service.MergeWithIdentity(ctx, pr.ID, ctx.Doer, repo_model.MergeStyle(form.Do), form.HeadCommitID, message, false, commitIdentity); err != nil {
 		if pull_service.IsErrInvalidMergeStyle(err) {
 			ctx.JSONError(ctx.Tr("repo.pulls.invalid_merge_option"))
 		} else if conflictError, ok := err.(pull_service.ErrMergeConflicts); ok {
