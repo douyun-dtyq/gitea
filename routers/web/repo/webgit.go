@@ -4,6 +4,8 @@
 package repo
 
 import (
+	"strings"
+
 	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/setting"
@@ -23,18 +25,27 @@ func WebGitOperationCommonData(ctx *context.Context) {
 	}
 	ctx.Data["CommitCandidateEmails"] = emails
 	ctx.Data["CommitDefaultEmail"] = ctx.Doer.GetEmail()
+	ctx.Data["CommitDefaultName"] = ctx.Doer.GitName()
 }
 
-func WebGitOperationGetCommitChosenEmailIdentity(ctx *context.Context, email string) (_ *files_service.IdentityOptions, valid bool) {
+func WebGitOperationGetCommitChosenEmailIdentity(ctx *context.Context, name, email string) (_ *files_service.IdentityOptions, valid bool) {
 	if ctx.Data["CommitCandidateEmails"] == nil {
 		setting.PanicInDevOrTesting("no CommitCandidateEmails in context data")
 	}
-	emails, _ := ctx.Data["CommitCandidateEmails"].([]string)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = ctx.Doer.GitName()
+	} else if strings.ContainsAny(name, "\r\n<>") {
+		return nil, false
+	}
+	email = strings.TrimSpace(email)
 	if email == "" {
-		return nil, true
+		email = ctx.Doer.GetEmail()
+	} else {
+		emails, _ := ctx.Data["CommitCandidateEmails"].([]string)
+		if !util.SliceContainsString(emails, email, true) {
+			return nil, false
+		}
 	}
-	if util.SliceContainsString(emails, email, true) {
-		return &files_service.IdentityOptions{GitUserEmail: email}, true
-	}
-	return nil, false
+	return &files_service.IdentityOptions{GitUserName: name, GitUserEmail: email}, true
 }
