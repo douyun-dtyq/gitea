@@ -15,7 +15,7 @@ import (
 // MergeBase checks and returns merge base of two commits.
 func MergeBase(ctx context.Context, repo RepositoryFacade, baseCommitID, headCommitID string) (string, error) {
 	mergeBase, stderr, err := gitcmd.NewCommand("merge-base").
-		AddDashesAndList(baseCommitID, headCommitID).WithRepo(repo).RunStdString(ctx)
+		AddDashesAndList(baseCommitID, headCommitID).WithRepo(repo).AllowExitCodes(1).RunStdString(ctx)
 	if err != nil {
 		if gitcmd.IsErrorExitCode(err, 1) && strings.TrimSpace(stderr) == "" {
 			return "", util.NewNotExistErrorf("merge-base for %s and %s doesn't exist", baseCommitID, headCommitID)

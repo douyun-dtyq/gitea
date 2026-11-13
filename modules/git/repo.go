@@ -146,6 +146,7 @@ func (repo *Repository) IsEmpty(ctx context.Context) (bool, error) {
 		AddOptionFormat("--git-dir=%s", gitrepo.RepoLocalPath(repo)). // TODO: all git commands should use "--git-dir" or "GIT_DIR=..."
 		AddArguments("rev-list", "-n", "1", "--all").
 		WithRepo(repo).
+		AllowExitCodes(1, 129).
 		RunStdString(ctx)
 	if err != nil {
 		if (gitcmd.IsErrorExitCode(err, 1) && err.Stderr() == "") || gitcmd.IsErrorExitCode(err, 129) {

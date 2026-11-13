@@ -62,6 +62,9 @@ type Command struct {
 	cmdEnv     []string
 	cmdTimeout time.Duration
 
+	// exit codes the caller expects, they are not logged as errors
+	allowedExitCodes []int
+
 	// only os.Pipe and in-memory buffers can work with Stdin safely, see https://github.com/golang/go/issues/77227 if the command would exit unexpectedly
 	cmdStdin  io.Reader
 	cmdStdout io.Writer
@@ -561,18 +564,31 @@ func (c *Command) WaitWithStderr() RunStdError {
 	return NewRunStdError(errWait, util.UnsafeBytesToString(c.cmdManagedStderr.Bytes()))
 }
 
-func (c *Command) RunWithStderr(ctx context.Context) RunStdError {
+func (c *Command) runWithStderr(ctx context.Context) RunStdError {
 	if err := c.WithParentCallerInfo().StartWithStderr(ctx); err != nil {
 		return &runStdError{err: err}
 	}
 	return c.WaitWithStderr()
 }
 
+func (c *Command) RunWithStderr(ctx context.Context) RunStdError {
+	runErr := c.runWithStderr(ctx)
+	c.logResult(runErr, "", c.managedStderrString())
+	return runErr
+}
+
 func (c *Command) Run(ctx context.Context) (err error) {
+	if c.cmdStderr == nil {
+		// capture stderr for logging only, it is never added to the returned error
+		c.cmdManagedStderr = &bytes.Buffer{}
+		c.cmdStderr = c.cmdManagedStderr
+	}
 	if err = c.WithParentCallerInfo().Start(ctx); err != nil {
 		return err
 	}
-	return c.Wait()
+	err = c.Wait()
+	c.logResult(err, "", c.managedStderrString())
+	return err
 }
 
 // RunStdString runs the command and returns stdout/stderr as string. and store stderr to returned error (err combined with stderr).
@@ -592,8 +608,88 @@ func (c *Command) runStdBytes(ctx context.Context) ([]byte, []byte, RunStdError)
 		panic("stdout and stderr field must be nil when using RunStdBytes")
 	}
 	stdoutBuf := &bytes.Buffer{}
-	err := c.WithStdoutBuffer(stdoutBuf).RunWithStderr(ctx)
-	return stdoutBuf.Bytes(), c.cmdManagedStderr.Bytes(), err
+	err := c.WithStdoutBuffer(stdoutBuf).runWithStderr(ctx)
+	stderrBytes := c.cmdManagedStderr.Bytes()
+	c.logResult(err, util.UnsafeBytesToString(stdoutBuf.Bytes()), util.UnsafeBytesToString(stderrBytes))
+	return stdoutBuf.Bytes(), stderrBytes, err
+}
+
+// AllowExitCodes declares the exit codes which are expected by the caller. Such exit codes are not logged as errors.
+// For example, `git diff --quiet` returns 1 when there are differences.
+func (c *Command) AllowExitCodes(codes ...int) *Command {
+	c.allowedExitCodes = append(c.allowedExitCodes, codes...)
+	return c
+}
+
+func (c *Command) isAllowedExitCode(err error) bool {
+	for _, code := range c.allowedExitCodes {
+		if IsErrorExitCode(err, code) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Command) managedStderrString() string {
+	if c.cmdManagedStderr == nil {
+		return ""
+	}
+	return util.UnsafeBytesToString(c.cmdManagedStderr.Bytes())
+}
+
+const commandLogOutputLimit = 4 * 1024
+
+func truncateCommandLogOutput(s string) string {
+	if len(s) <= commandLogOutputLimit {
+		return s
+	}
+	return s[:commandLogOutputLimit] + "...[truncated]"
+}
+
+// commandLogWarnings extracts the lines git marks as diagnostics. Progress output such as
+// the transfer summary of fetch/push is left out so that a successful command does not look like a failure.
+func commandLogWarnings(output string) string {
+	var sb strings.Builder
+	for line := range strings.SplitSeq(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "warning:") || strings.HasPrefix(line, "error:") || strings.HasPrefix(line, "fatal:") {
+			if sb.Len() > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(line)
+		}
+	}
+	return sb.String()
+}
+
+// logResult records the command outcome. The output is written to the log only, it is never
+// added to the returned error so that it can not leak through error messages.
+func (c *Command) logResult(err error, stdout, stderr string) {
+	stderr = truncateCommandLogOutput(strings.TrimSpace(stderr))
+	stdout = truncateCommandLogOutput(strings.TrimSpace(stdout))
+
+	if err == nil {
+		if stderr == "" {
+			return
+		}
+		if warnings := commandLogWarnings(stderr); warnings != "" {
+			log.Warn("git command succeeded with warnings: %s\n%s", c.LogString(), warnings)
+		} else {
+			log.Debug("git command output: %s\n%s", c.LogString(), stderr)
+		}
+		return
+	}
+
+	if c.isAllowedExitCode(err) {
+		log.Debug("git command exited with an expected code: %s, error: %v", c.LogString(), err)
+		return
+	}
+
+	output := stderr
+	if stdout != "" && stdout != stderr {
+		output += "\n" + stdout
+	}
+	log.Error("git command failed: %s, error: %v\n%s", c.LogString(), err, strings.TrimSpace(output))
 }
 
 func (c *Command) DebugKill() {

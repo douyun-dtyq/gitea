@@ -20,7 +20,9 @@ const MaxConflictedDetectFiles = 10
 func MergeTree(ctx context.Context, repo RepositoryFacade, baseRef, headRef, mergeBase string) (treeID string, isErrHasConflicts bool, conflictFiles []string, _ error) {
 	cmd := gitcmd.NewCommand("merge-tree", "--write-tree", "-z", "--name-only", "--no-messages").
 		AddOptionFormat("--merge-base=%s", mergeBase).
-		AddDynamicArguments(baseRef, headRef)
+		AddDynamicArguments(baseRef, headRef).
+		// exit code 1 means the merge has conflicts, it is not a failure
+		AllowExitCodes(1)
 
 	stdout, stdoutClose := cmd.MakeStdoutPipe()
 	defer stdoutClose()

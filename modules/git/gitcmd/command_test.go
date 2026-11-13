@@ -157,3 +157,40 @@ func TestRunWithContextTimeout(t *testing.T) {
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 }
+
+func TestRunKeepsStderrOutOfError(t *testing.T) {
+	// Run captures stderr only for the log, the returned error must stay as the plain exec error
+	err := NewCommand("ls-tree", "no-such").Run(t.Context())
+	require.Error(t, err)
+	assert.Equal(t, "exit status 128", err.Error())
+
+	// AllowExitCodes only affects the log level, it does not change the returned error
+	err = NewCommand("rev-parse", "--verify", "--quiet").AddDynamicArguments("no-such-ref").AllowExitCodes(1).Run(t.Context())
+	require.Error(t, err)
+	assert.True(t, IsErrorExitCode(err, 1))
+	assert.Equal(t, "exit status 1", err.Error())
+}
+
+func TestCommandLogWarnings(t *testing.T) {
+	// the transfer summary of a successful fetch/push is progress output, not a warning
+	assert.Empty(t, commandLogWarnings("From /path/to/repo\n * branch            HEAD       -> FETCH_HEAD"))
+	assert.Empty(t, commandLogWarnings("Everything up-to-date"))
+
+	assert.Equal(t,
+		"warning: You appear to have cloned an empty repository.",
+		commandLogWarnings("warning: You appear to have cloned an empty repository."),
+	)
+	assert.Equal(t,
+		"error: refs/heads/x: invalid sha1 pointer 1111\nfatal: bad object refs/heads/x",
+		commandLogWarnings("Enumerating objects: 7, done.\nerror: refs/heads/x: invalid sha1 pointer 1111\nfatal: bad object refs/heads/x"),
+	)
+}
+
+func TestCommandTruncateLogOutput(t *testing.T) {
+	assert.Equal(t, "abc", truncateCommandLogOutput("abc"))
+
+	long := strings.Repeat("a", commandLogOutputLimit+10)
+	out := truncateCommandLogOutput(long)
+	assert.Len(t, out, commandLogOutputLimit+len("...[truncated]"))
+	assert.True(t, strings.HasSuffix(out, "...[truncated]"))
+}
