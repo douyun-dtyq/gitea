@@ -413,6 +413,7 @@ func IsCommitInRepo(ctx context.Context, repo gitrepo.RepositoryFacade, commitID
 	_, _, err := gitcmd.NewCommand("rev-parse", "--verify", "--quiet").
 		AddDynamicArguments(commitID + "^{commit}").
 		WithRepo(repo).
+		AllowExitCodes(1).
 		RunStdString(ctx)
 	if gitcmd.IsErrorExitCode(err, 1) {
 		return false, nil

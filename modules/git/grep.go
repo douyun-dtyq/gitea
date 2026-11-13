@@ -55,7 +55,9 @@ func GrepSearch(ctx context.Context, repo *Repository, search string, opts GrepO
 	 2^@repo: go-gitea/gitea
 	*/
 	var results []*GrepResult
-	cmd := gitcmd.NewCommand("grep", "--null", "--break", "--heading", "--line-number", "--full-name")
+	cmd := gitcmd.NewCommand("grep", "--null", "--break", "--heading", "--line-number", "--full-name").
+		// exit code 1 means no matches, exit code -1 means the command was killed because the result limit was reached
+		AllowExitCodes(1, -1)
 	cmd.AddOptionValues("--context", strconv.Itoa(opts.ContextLineNumber))
 	switch opts.GrepMode {
 	case GrepModeExact:

@@ -18,7 +18,9 @@ const MaxConflictedDetectFiles = 10
 // It returns the resulting tree hash, a list of conflicted files (if any), and an error if the operation fails.
 // If there are no conflicts, the list of conflicted files will be nil.
 func MergeTree(ctx context.Context, repo RepositoryFacade, baseRef, headRef, mergeBase string) (treeID string, isErrHasConflicts bool, conflictFiles []string, _ error) {
-	cmd := gitcmd.NewCommand("merge-tree", "--write-tree", "-z", "--name-only", "--no-messages")
+	cmd := gitcmd.NewCommand("merge-tree", "--write-tree", "-z", "--name-only", "--no-messages").
+		// exit code 1 means the merge has conflicts, it is not a failure
+		AllowExitCodes(1)
 	if mergeBase != "" {
 		cmd.AddOptionFormat("--merge-base=%s", mergeBase)
 	}

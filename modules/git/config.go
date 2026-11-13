@@ -145,7 +145,7 @@ func syncGitConfig(ctx context.Context) (err error) {
 }
 
 func configGet(ctx context.Context, key string) (string, error) {
-	stdout, _, err := gitcmd.NewCommand("config", "--global", "--get").AddDynamicArguments(key).RunStdString(ctx)
+	stdout, _, err := gitcmd.NewCommand("config", "--global", "--get").AddDynamicArguments(key).AllowExitCodes(1).RunStdString(ctx)
 	if err != nil && !gitcmd.IsErrorExitCode(err, 1) {
 		return "", fmt.Errorf("failed to get git config %s, err: %w", key, err)
 	}
@@ -155,6 +155,7 @@ func configGet(ctx context.Context, key string) (string, error) {
 func configSet(ctx context.Context, key, value string) error {
 	stdout, _, err := gitcmd.NewCommand("config", "--global", "--get").
 		AddDynamicArguments(key).
+		AllowExitCodes(1).
 		RunStdString(ctx)
 	if err != nil && !gitcmd.IsErrorExitCode(err, 1) {
 		return fmt.Errorf("failed to get git config %s, err: %w", key, err)
